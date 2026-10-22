@@ -1,15 +1,15 @@
 
 from functools import lru_cache
 
-from sentence_transformers import SentenceTransformer
-
 
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
 
 @lru_cache(maxsize=1)
-def get_embedding_model() -> SentenceTransformer:
-    """Load the embedding model once and reuse it."""
+def get_embedding_model():
+    """Load the embedding model only when it is first needed."""
+    from sentence_transformers import SentenceTransformer
+
     return SentenceTransformer(MODEL_NAME)
 
 

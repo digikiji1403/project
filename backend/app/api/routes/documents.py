@@ -1,4 +1,3 @@
-
 import logging
 import uuid
 from pathlib import Path
@@ -42,6 +41,7 @@ def list_documents(
         .order_by(Document.created_at.desc())
         .all()
     )
+
     return [
         {
             "id": document.id,
@@ -82,14 +82,15 @@ def upload_document(
 
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-    user_dir = UPLOAD_DIR / str(current_user.id)
+    user_id = current_user.id
+    user_dir = UPLOAD_DIR / str(user_id)
     user_dir.mkdir(parents=True, exist_ok=True)
 
     destination = user_dir / f"{uuid.uuid4().hex}.pdf"
     total_size = 0
     header = b""
 
-    # Stage 1: Save and validate the uploaded file.
+    # Stage 1: Save the file in bounded-size reads and validate it.
     try:
         with destination.open("xb") as output:
             while True:
@@ -98,8 +99,8 @@ def upload_document(
                 if not data:
                     break
 
-                if not header:
-                    header = data[:5]
+                if len(header) < 5:
+                    header += data[: 5 - len(header)]
 
                 total_size += len(data)
 
@@ -132,9 +133,9 @@ def upload_document(
     finally:
         file.file.close()
 
-    # Stage 2: Create the database record before processing.
+    # Stage 2: Create a durable database record before processing.
     document = Document(
-        user_id=current_user.id,
+        user_id=user_id,
         filename=original_name,
         storage_path=str(destination.resolve()),
         content_type="application/pdf",
@@ -147,6 +148,10 @@ def upload_document(
         db.commit()
         db.refresh(document)
 
+        # Keep scalar identifiers available even after rollback/expiration.
+        document_id = document.id
+        document_filename = document.filename
+
     except Exception as exc:
         db.rollback()
         destination.unlink(missing_ok=True)
@@ -156,7 +161,7 @@ def upload_document(
             detail="Could not save document metadata.",
         ) from exc
 
-    # Stage 3: Extract, embed, and index the document.
+    # Stage 3: Extract text, generate embeddings, and index the document.
     try:
         extracted = extract_and_chunk_pdf(str(destination))
 
@@ -165,23 +170,30 @@ def upload_document(
             for index, chunk in enumerate(extracted["chunks"])
         ]
 
-        embeddings = embed_texts(
-            [chunk["text"] for chunk in chunks]
-        )
+        if not chunks:
+            raise ValueError("No extractable text was found in the PDF.")
 
-        # Store vectors in Pinecone.
+        # embed_texts processes inputs in bounded batches.
+        embeddings = embed_texts([chunk["text"] for chunk in chunks])
+
+        if len(embeddings) != len(chunks):
+            raise ValueError(
+                "Embedding count does not match the number of chunks."
+            )
+
+        # Index the vectors in Pinecone.
         store_document_chunks(
-            user_id=current_user.id,
-            document_id=document.id,
-            filename=document.filename,
+            user_id=user_id,
+            document_id=document_id,
+            filename=document_filename,
             chunks=chunks,
             embeddings=embeddings,
         )
 
-        # Store text chunks in PostgreSQL.
+        # Persist extracted text chunks in PostgreSQL.
         save_document_chunks(
             db=db,
-            document_id=document.id,
+            document_id=document_id,
             chunks=chunks,
         )
 
@@ -203,35 +215,55 @@ def upload_document(
         }
 
     except Exception as exc:
+        # Roll back pending chunk inserts before performing cleanup.
         db.rollback()
+
         logger.exception(
             "Document processing failed for document %s",
-            document.id,
+            document_id,
         )
 
-        # Remove any partially indexed vectors for this document.
+        # Remove vectors that may have been partially indexed.
         try:
             get_pinecone_index().delete(
-                filter={"document_id": {"$eq": document.id}},
-                namespace=f"user-{current_user.id}",
+                filter={"document_id": {"$eq": document_id}},
+                namespace=f"user-{user_id}",
             )
         except Exception:
             logger.exception(
                 "Failed to clean up Pinecone vectors for document %s",
-                document.id,
+                document_id,
             )
 
+        # Reload the committed document record after rollback.
         try:
-            document.status = "failed"
-            document.error_message = (
-                "Document processing failed. Please try uploading it again."
+            failed_document = (
+                db.query(Document)
+                .filter(
+                    Document.id == document_id,
+                    Document.user_id == user_id,
+                )
+                .first()
             )
-            db.commit()
+
+            if failed_document is not None:
+                failed_document.status = "failed"
+                failed_document.error_message = (
+                    "Document processing failed. "
+                    "Please try uploading it again."
+                )
+                db.commit()
+            else:
+                logger.error(
+                    "Document %s was not found during failure recovery",
+                    document_id,
+                )
+
         except Exception:
             db.rollback()
             logger.exception(
                 "Failed to update document status for document %s",
-                document.id,
+                document_id,
             )
 
         raise HTTPException(

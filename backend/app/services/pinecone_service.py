@@ -40,7 +40,7 @@ def store_document_chunks(
     chunks: list[dict],
     embeddings: list[list[float]],
 ) -> int:
-    """Store embedded chunks in the namespace belonging to one user."""
+    """Store a batch of embedded chunks in Pinecone."""
 
     if len(chunks) != len(embeddings):
         raise ValueError("Each document chunk must have one embedding.")
@@ -48,19 +48,15 @@ def store_document_chunks(
     if not chunks:
         return 0
 
-    index = get_pinecone_index()
-    namespace = f"user-{user_id}"
     vectors = []
 
     for chunk, embedding in zip(chunks, embeddings):
         if len(embedding) != EMBEDDING_DIMENSION:
             raise ValueError("Embedding must contain exactly 384 dimensions.")
 
-        vector_id = f"doc-{document_id}-chunk-{chunk['chunk_index']}"
-
         vectors.append(
             {
-                "id": vector_id,
+                "id": f"doc-{document_id}-chunk-{chunk['chunk_index']}",
                 "values": embedding,
                 "metadata": {
                     "user_id": user_id,
@@ -73,12 +69,10 @@ def store_document_chunks(
             }
         )
 
-    # Upsert in batches to keep requests manageable.
-    for start in range(0, len(vectors), 100):
-        index.upsert(
-            vectors=vectors[start : start + 100],
-            namespace=namespace,
-        )
+    get_pinecone_index().upsert(
+        vectors=vectors,
+        namespace=f"user-{user_id}",
+    )
 
     return len(vectors)
 
@@ -109,20 +103,14 @@ def search_document_chunks(
 
     response = get_pinecone_index().query(**query_options)
 
-    results = []
-
-    for match in response.matches:
-        metadata = match.metadata or {}
-
-        results.append(
-            {
-                "score": match.score,
-                "document_id": metadata.get("document_id"),
-                "filename": metadata.get("filename"),
-                "page_number": metadata.get("page_number"),
-                "start_index": metadata.get("start_index"),
-                "text": metadata.get("text"),
-            }
-        )
-
-    return results
+    return [
+        {
+            "score": match.score,
+            "document_id": (match.metadata or {}).get("document_id"),
+            "filename": (match.metadata or {}).get("filename"),
+            "page_number": (match.metadata or {}).get("page_number"),
+            "start_index": (match.metadata or {}).get("start_index"),
+            "text": (match.metadata or {}).get("text"),
+        }
+        for match in response.matches
+    ]

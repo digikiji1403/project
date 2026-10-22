@@ -17,6 +17,14 @@ if not DATABASE_URL:
         "DATABASE_URL is missing. Check the project root .env file."
     )
 
+# Use the psycopg v3 driver for PostgreSQL URLs.
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace(
+        "postgresql://",
+        "postgresql+psycopg://",
+        1,
+    )
+
 engine = create_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(

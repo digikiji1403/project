@@ -1,4 +1,5 @@
 
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -15,9 +16,10 @@ from app.api.routes.conversations import router as conversations_router
 from app.api.routes.documents import router as documents_router
 from app.api.routes.study import router as study_router
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create tables that do not already exist.
+    # Create missing database tables during application startup.
     # Existing tables and their data are preserved.
     Base.metadata.create_all(bind=engine)
     yield
@@ -30,16 +32,27 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Local development origins are always allowed.
+allowed_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+# Add the deployed frontend URL through the FRONTEND_URL environment variable.
+frontend_url = os.getenv("FRONTEND_URL", "").strip().rstrip("/")
+
+if frontend_url:
+    allowed_origins.append(frontend_url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register API routes.
 app.include_router(documents_router)
 app.include_router(study_router)
 app.include_router(conversations_router)

@@ -19,22 +19,42 @@ import { QuickActions } from '@/components/dashboard/quick-actions';
 import { WelcomeSection } from '@/components/dashboard/welcome-section';
 import { SectionHeader } from '@/components/dashboard/section-header';
 
-import { getLearningStats } from '@/lib/api';
-import type { LearningStats } from '@/lib/types';
+import {
+  getDocuments,
+  getLearningAnalytics,
+  getStudyPlan,
+} from '@/lib/api';
+import type {
+  LearningAnalytics,
+  StudyDocument,
+  StudyPlanSession,
+} from '@/lib/api';
 
 export default function DashboardPage() {
   const [loading, setLoading] = React.useState(true);
 
   const [learningStats, setLearningStats] =
-    React.useState<LearningStats | null>(null);
+    React.useState<LearningAnalytics | null>(null);
+  const [documents, setDocuments] = React.useState<StudyDocument[]>([]);
+  const [studyPlan, setStudyPlan] = React.useState<StudyPlanSession[]>([]);
+  const [topicPerformance, setTopicPerformance] = React.useState<
+    LearningAnalytics['topic_performance']
+  >([]);
 
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     async function loadLearningStats() {
       try {
-        const data = await getLearningStats();
-        setLearningStats(data);
+        const [analytics, savedDocuments, plannedSessions] = await Promise.all([
+          getLearningAnalytics(),
+          getDocuments(),
+          getStudyPlan(),
+        ]);
+        setLearningStats(analytics);
+        setTopicPerformance(analytics.topic_performance);
+        setDocuments(savedDocuments);
+        setStudyPlan(plannedSessions);
         setError(null);
       } catch (err) {
         setError(
@@ -76,6 +96,14 @@ export default function DashboardPage() {
           icon: 'TrendingUp',
           accent: 'warning',
         },
+        {
+          label: 'Quiz Attempts',
+          value: String(learningStats.quiz_attempts),
+          delta: 'Results tracked',
+          trend: 'neutral' as const,
+          icon: 'ListChecks',
+          accent: 'success',
+        },
       ]
     : [];
 
@@ -104,16 +132,29 @@ export default function DashboardPage() {
         {/* Activity chart and upcoming sessions */}
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="lg:col-span-2">
-            {loading ? <ActivityChartSkeleton /> : <ActivityChart />}
+            {loading ? (
+              <ActivityChartSkeleton />
+            ) : (
+              <ActivityChart topics={topicPerformance} />
+            )}
           </div>
 
-          <UpcomingSessions loading={loading} />
+          <UpcomingSessions
+            loading={loading}
+            sessions={studyPlan
+              .filter(
+                (session) =>
+                  session.status === 'planned' &&
+                  session.scheduled_date >= new Date().toISOString().slice(0, 10)
+              )
+              .slice(0, 4)}
+          />
         </div>
 
         {/* Recent documents and quick actions */}
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="lg:col-span-2">
-            <RecentDocuments loading={loading} />
+            <RecentDocuments loading={loading} documents={documents.slice(0, 5)} />
           </div>
 
           <div className="flex flex-col gap-3">

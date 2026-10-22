@@ -12,7 +12,7 @@ import {
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { weeklyActivity } from '@/lib/mock-data';
+import type { TopicPerformance } from '@/lib/api';
 
 function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
@@ -21,34 +21,44 @@ function ChartTooltip({ active, payload, label }: any) {
     <div className="rounded-lg border bg-popover px-3 py-2 text-xs shadow-md">
       <p className="mb-1 font-semibold text-foreground">{label}</p>
       <p className="text-muted-foreground">
-        {point.hours}h studied · {point.sessions} sessions
+        {point.hours}% average · {point.sessions} attempts
       </p>
     </div>
   );
 }
 
-export function ActivityChart() {
+export function ActivityChart({
+  topics = [],
+}: {
+  topics?: TopicPerformance[];
+}) {
+  const data = topics.map((topic) => ({
+    day: topic.topic.length > 18 ? `${topic.topic.slice(0, 18)}…` : topic.topic,
+    hours: topic.average_score,
+    sessions: topic.attempt_count,
+  }));
+
   return (
     <Card className="h-full">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <div>
           <CardTitle className="text-base font-semibold">
-            Weekly Study Activity
+            Topic Performance
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            Hours studied over the past 7 days
+            Average quiz score by study material
           </p>
-        </div>
-        <div className="text-right">
-          <p className="text-lg font-bold text-primary">23.6h</p>
-          <p className="text-[11px] text-muted-foreground">this week</p>
         </div>
       </CardHeader>
       <CardContent className="pl-2">
-        <div className="h-[240px] w-full">
+        {data.length === 0 ? (
+          <div className="flex h-[240px] items-center justify-center px-4 text-center text-sm text-muted-foreground">
+            Complete a quiz to see your performance by topic.
+          </div>
+        ) : <div className="h-[240px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart
-              data={weeklyActivity}
+              data={data}
               margin={{ top: 10, right: 12, left: 0, bottom: 0 }}
             >
               <defs>
@@ -77,6 +87,7 @@ export function ActivityChart() {
                 tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
               />
               <YAxis
+                domain={[0, 100]}
                 tickLine={false}
                 axisLine={false}
                 tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
@@ -99,7 +110,7 @@ export function ActivityChart() {
               />
             </AreaChart>
           </ResponsiveContainer>
-        </div>
+        </div>}
       </CardContent>
     </Card>
   );

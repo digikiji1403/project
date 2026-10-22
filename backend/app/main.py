@@ -13,6 +13,7 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.tutor import router as tutor_router
 from app.api.routes.conversations import router as conversations_router
 from app.api.routes.documents import router as documents_router
+from app.api.routes.study import router as study_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -40,6 +41,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(documents_router)
+app.include_router(study_router)
 app.include_router(conversations_router)
 app.include_router(tutor_router)
 app.include_router(health_router)

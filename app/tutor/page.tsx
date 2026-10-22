@@ -22,12 +22,14 @@ import {
   askDocumentQuestion,
   getConversations,
   getConversationHistory,
+  getDocuments,
 } from '@/lib/api';
 
 import type {
   Conversation,
   ChatMessage,
   DocumentSource,
+  StudyDocument,
 } from '@/lib/api';
 
 import { Button } from '@/components/ui/button';
@@ -63,6 +65,8 @@ export default function TutorPage() {
   const [question, setQuestion] = React.useState('');
   const [documentMode, setDocumentMode] = React.useState(false);
   const [documentId, setDocumentId] = React.useState('');
+  const [documents, setDocuments] = React.useState<StudyDocument[]>([]);
+  const [documentLoadError, setDocumentLoadError] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
 
@@ -98,6 +102,16 @@ export default function TutorPage() {
   React.useEffect(() => {
     void refreshConversations();
   }, [refreshConversations]);
+
+  React.useEffect(() => {
+    getDocuments()
+      .then((result) => {
+        setDocuments(result);
+        setDocumentId((current) => current || String(result.find((item) => item.status === 'ready')?.id ?? ''));
+        setDocumentLoadError('');
+      })
+      .catch((err: unknown) => setDocumentLoadError(getErrorMessage(err)));
+  }, []);
 
   async function sendQuestion(text: string) {
     const trimmed = text.trim();
@@ -514,20 +528,26 @@ export default function TutorPage() {
                   htmlFor="document-id"
                   className="mb-1 block text-xs font-medium text-muted-foreground"
                 >
-                  PDF document ID (optional)
+                  Search in a PDF (optional)
                 </label>
 
-                <input
+                <select
                   id="document-id"
-                  type="number"
-                  min="1"
-                  step="1"
                   value={documentId}
                   onChange={(event) => setDocumentId(event.target.value)}
-                  placeholder="Leave blank to search all your uploaded PDFs"
                   disabled={loading || historyLoading}
                   className="w-full rounded-xl border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                />
+                >
+                  <option value="">Search all my processed PDFs</option>
+                  {documents.filter((document) => document.status === 'ready').map((document) => (
+                    <option key={document.id} value={document.id}>{document.filename}</option>
+                  ))}
+                </select>
+                {documentLoadError ? (
+                  <p role="alert" className="mt-1 text-xs text-destructive">{documentLoadError}</p>
+                ) : documents.length === 0 ? (
+                  <p className="mt-1 text-xs text-muted-foreground">Upload a PDF first from the Documents page.</p>
+                ) : null}
               </div>
             )}
 

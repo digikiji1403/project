@@ -171,3 +171,217 @@ def test_get_conversation_history(test_client, monkeypatch):
     assert history["messages"][1]["content"] == (
         "Photosynthesis uses sunlight to make food."
     )
+
+
+def test_document_list_is_limited_to_the_current_user(test_client):
+    from app.db.models import Document, User
+
+    factory = test_client.test_session_factory
+    with factory() as db:
+        other_user = User(
+            email="other@example.com",
+            full_name="Other Student",
+            hashed_password="test-password-hash",
+            is_active=True,
+        )
+        db.add(other_user)
+        db.flush()
+        db.add_all(
+            [
+                Document(
+                    user_id=1,
+                    filename="mine.pdf",
+                    storage_path="private/mine.pdf",
+                    file_size=100,
+                    status="ready",
+                    page_count=2,
+                ),
+                Document(
+                    user_id=other_user.id,
+                    filename="theirs.pdf",
+                    storage_path="private/theirs.pdf",
+                    file_size=100,
+                    status="ready",
+                    page_count=2,
+                ),
+            ]
+        )
+        db.commit()
+
+    response = test_client.get("/documents")
+
+    assert response.status_code == 200
+    assert [item["filename"] for item in response.json()] == ["mine.pdf"]
+    assert "storage_path" not in response.json()[0]
+
+
+def test_generate_saved_material_and_record_quiz_analytics(
+    test_client,
+    monkeypatch,
+):
+    from app.api.routes import study
+    from app.db.models import Document, DocumentChunk
+
+    factory = test_client.test_session_factory
+    with factory() as db:
+        document = Document(
+            user_id=1,
+            filename="biology.pdf",
+            storage_path="private/biology.pdf",
+            file_size=100,
+            status="ready",
+            page_count=1,
+        )
+        db.add(document)
+        db.flush()
+        document_id = document.id
+        db.add(
+            DocumentChunk(
+                document_id=document_id,
+                chunk_index=0,
+                page_number=1,
+                start_index=0,
+                content="Mitochondria produce ATP through cellular respiration.",
+            )
+        )
+        db.commit()
+
+    monkeypatch.setattr(
+        study,
+        "generate_material",
+        lambda document, chunks, kind, topic: [
+            {
+                "question": "What do mitochondria produce?",
+                "choices": ["ATP", "DNA", "Glucose", "Water"],
+                "answer": "ATP",
+                "explanation": "Cellular respiration produces ATP.",
+            }
+            for _ in range(5)
+        ],
+    )
+    response = test_client.post(
+        "/study/materials",
+        json={"document_id": document_id, "kind": "quiz"},
+    )
+
+    assert response.status_code == 201
+    material = response.json()
+    assert material["kind"] == "quiz"
+    assert material["content"][0]["answer"] == "ATP"
+    assert test_client.get("/study/materials?kind=quiz").json()[0]["id"] == material["id"]
+
+    attempt = test_client.post(
+        "/study/quiz-attempts",
+        json={
+            "material_id": material["id"],
+            "answers": ["ATP", "", "", "", ""],
+        },
+    )
+    assert attempt.status_code == 201
+    assert attempt.json()["topic"] == "biology"
+    analytics = test_client.get("/analytics")
+    assert analytics.status_code == 200
+    assert analytics.json()["quiz_average"] == 20
+    assert analytics.json()["weaknesses"]
+
+
+def test_study_material_generation_rejects_another_users_document(test_client):
+    from app.db.models import Document, User
+
+    factory = test_client.test_session_factory
+    with factory() as db:
+        other_user = User(
+            email="owner@example.com",
+            full_name="Document Owner",
+            hashed_password="test-password-hash",
+            is_active=True,
+        )
+        db.add(other_user)
+        db.flush()
+        document = Document(
+            user_id=other_user.id,
+            filename="private.pdf",
+            storage_path="private/private.pdf",
+            file_size=100,
+            status="ready",
+            page_count=1,
+        )
+        db.add(document)
+        db.commit()
+        document_id = document.id
+
+    response = test_client.post(
+        "/study/materials",
+        json={"document_id": document_id, "kind": "summary"},
+    )
+    assert response.status_code == 404
+
+
+def test_document_question_rejects_another_users_document(
+    test_client,
+    monkeypatch,
+):
+    from app.db.models import Document, User
+
+    factory = test_client.test_session_factory
+    with factory() as db:
+        other_user = User(
+            email="private-owner@example.com",
+            full_name="Private Owner",
+            hashed_password="test-password-hash",
+            is_active=True,
+        )
+        db.add(other_user)
+        db.flush()
+        document = Document(
+            user_id=other_user.id,
+            filename="private.pdf",
+            storage_path="private/private.pdf",
+            file_size=100,
+            status="ready",
+            page_count=1,
+        )
+        db.add(document)
+        db.commit()
+        document_id = document.id
+
+    from app.api.routes import tutor
+
+    monkeypatch.setattr(
+        tutor,
+        "answer_document_question",
+        lambda **_kwargs: pytest.fail("Must not retrieve another user's PDF."),
+    )
+    response = test_client.post(
+        "/tutor/ask-document",
+        json={
+            "question": "What is in this PDF?",
+            "document_id": document_id,
+        },
+    )
+    assert response.status_code == 404
+
+
+def test_planner_sessions_are_persisted_and_owner_scoped(test_client):
+    response = test_client.post(
+        "/planner",
+        json={
+            "title": "Review cell biology",
+            "subject": "Biology",
+            "scheduled_date": "2026-11-01",
+            "duration_minutes": 45,
+        },
+    )
+
+    assert response.status_code == 201
+    session = response.json()
+    assert session["status"] == "planned"
+
+    updated = test_client.patch(
+        f"/planner/{session['id']}",
+        json={"status": "completed"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["status"] == "completed"
+
+    assert test_client.get("/planner").json()[0]["id"] == session["id"]

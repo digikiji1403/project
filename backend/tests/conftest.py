@@ -1,5 +1,5 @@
 
-import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
@@ -20,12 +21,11 @@ from app.main import app
 
 @pytest.fixture
 def test_client():
-    test_database_url = os.getenv("TEST_DATABASE_URL")
-
-    if not test_database_url:
-        pytest.fail("TEST_DATABASE_URL is not configured.")
-
-    engine = create_engine(test_database_url)
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
 
     TestingSessionLocal = sessionmaker(
         autocommit=False,
@@ -77,10 +77,20 @@ def test_client():
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = override_get_current_user
 
+    original_lifespan = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def test_lifespan(_app):
+        yield
+
+    app.router.lifespan_context = test_lifespan
+
     try:
         with TestClient(app) as client:
+            client.test_session_factory = TestingSessionLocal
             yield client
     finally:
+        app.router.lifespan_context = original_lifespan
         app.dependency_overrides.clear()
         Base.metadata.drop_all(bind=engine)
         engine.dispose()

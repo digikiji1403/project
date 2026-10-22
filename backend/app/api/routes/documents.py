@@ -30,6 +30,31 @@ MAX_FILE_SIZE = 10 * 1024 * 1024
 READ_CHUNK_SIZE = 1024 * 1024
 
 
+@router.get("")
+def list_documents(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List only the authenticated user's uploaded documents."""
+    documents = (
+        db.query(Document)
+        .filter(Document.user_id == current_user.id)
+        .order_by(Document.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id": document.id,
+            "filename": document.filename,
+            "file_size": document.file_size,
+            "page_count": document.page_count,
+            "status": document.status,
+            "created_at": document.created_at,
+        }
+        for document in documents
+    ]
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 def upload_document(
     file: UploadFile = File(...),

@@ -4,46 +4,23 @@ import * as React from 'react';
 import Link from 'next/link';
 import {
   FileText,
-  Presentation,
-  Notebook,
-  BookOpen,
-  MoreHorizontal,
   ArrowRight,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import {
-  type DocumentItem,
-  recentDocuments,
-} from '@/lib/mock-data';
-
-const typeIcon: Record<DocumentItem['type'], typeof FileText> = {
-  PDF: FileText,
-  Slides: Presentation,
-  Notes: Notebook,
-  Textbook: BookOpen,
-};
-
-const typeColors: Record<DocumentItem['type'], string> = {
-  PDF: 'bg-red-500/10 text-red-500',
-  Slides: 'bg-amber-500/10 text-amber-500',
-  Notes: 'bg-primary/10 text-primary',
-  Textbook: 'bg-emerald-500/10 text-emerald-500',
-};
+import type { StudyDocument } from '@/lib/api';
 
 export function RecentDocuments({
-  documents = recentDocuments,
+  documents = [],
   loading = false,
 }: {
-  documents?: DocumentItem[];
+  documents?: StudyDocument[];
   loading?: boolean;
 }) {
   return (
@@ -88,46 +65,22 @@ export function RecentDocuments({
         ) : (
           <ul className="divide-y">
             {documents.map((doc) => {
-              const Icon = typeIcon[doc.type];
               return (
                 <li
                   key={doc.id}
-                  className="group flex items-center gap-3 px-6 py-3.5 transition-colors hover:bg-muted/40"
+                  className="flex items-center gap-3 px-6 py-3.5 transition-colors hover:bg-muted/40"
                 >
-                  <div
-                    className={cn(
-                      'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
-                      typeColors[doc.type]
-                    )}
-                  >
-                    <Icon className="h-5 w-5" />
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-500/10 text-red-500">
+                    <FileText className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">
-                      {doc.title}
+                      {doc.filename}
                     </p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {doc.subject} · {doc.type} · {doc.size} ·{' '}
-                      {doc.uploadedAt}
+                      {doc.page_count ?? '—'} pages · {(doc.file_size / 1024 / 1024).toFixed(2)} MB · {doc.status}
                     </p>
                   </div>
-                  <div className="hidden w-28 sm:block">
-                    <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
-                      <span>Progress</span>
-                      <span className="font-medium text-foreground">
-                        {doc.progress}%
-                      </span>
-                    </div>
-                    <Progress value={doc.progress} className="h-1.5" />
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
-                    aria-label="Document options"
-                  >
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
                 </li>
               );
             })}

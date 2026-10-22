@@ -6,6 +6,7 @@ from sqlalchemy import (
     String,
     Boolean,
     DateTime,
+    Date,
     ForeignKey,
     Text,
 )
@@ -151,6 +152,79 @@ class DocumentChunk(Base):
     start_index = Column(Integer, nullable=False)
     content = Column(Text, nullable=False)
 
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class StudyMaterial(Base):
+    __tablename__ = "study_materials"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    document_id = Column(
+        Integer,
+        ForeignKey("documents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    kind = Column(String(30), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class QuizAttempt(Base):
+    __tablename__ = "quiz_attempts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    material_id = Column(
+        Integer,
+        ForeignKey("study_materials.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    topic = Column(String(255), nullable=False, index=True)
+    score = Column(Integer, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class StudyPlanSession(Base):
+    __tablename__ = "study_plan_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    title = Column(String(255), nullable=False)
+    subject = Column(String(255), nullable=False)
+    scheduled_date = Column(Date, nullable=False, index=True)
+    duration_minutes = Column(Integer, nullable=False)
+    status = Column(String(20), nullable=False, default="planned")
     created_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),

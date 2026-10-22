@@ -184,6 +184,153 @@ export interface DocumentAnswer {
   conversation_id: number;
 }
 
+export interface StudyDocument {
+  id: number;
+  filename: string;
+  file_size: number;
+  page_count: number | null;
+  status: "uploaded" | "processing" | "ready" | "failed";
+  created_at: string;
+}
+
+export interface StudyMaterial {
+  id: number;
+  document_id: number | null;
+  kind: "summary" | "notes" | "explanation" | "quiz" | "flashcards";
+  title: string;
+  content:
+    | { text: string }
+    | Array<{
+        question?: string;
+        choices?: string[];
+        answer?: string;
+        explanation?: string;
+        front?: string;
+        back?: string;
+      }>;
+  created_at: string;
+}
+
+export interface TopicPerformance {
+  topic: string;
+  average_score: number;
+  attempt_count: number;
+}
+
+export interface LearningAnalytics {
+  lessons_completed: number;
+  study_hours: number;
+  quiz_average: number;
+  quiz_attempts: number;
+  topic_performance: TopicPerformance[];
+  strengths: string[];
+  weaknesses: string[];
+  recommendations: string[];
+}
+
+export interface StudyPlanSession {
+  id: number;
+  title: string;
+  subject: string;
+  scheduled_date: string;
+  duration_minutes: number;
+  status: "planned" | "completed";
+  created_at: string;
+}
+
+async function apiRequest<T>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      ...getAuthHeaders(),
+      ...options.headers,
+    },
+  });
+  return handleResponse<T>(response);
+}
+
+export async function getDocuments(): Promise<StudyDocument[]> {
+  return apiRequest<StudyDocument[]>("/documents");
+}
+
+export async function uploadDocument(file: File): Promise<StudyDocument> {
+  const body = new FormData();
+  body.append("file", file);
+  return apiRequest<StudyDocument>("/documents", {
+    method: "POST",
+    body,
+  });
+}
+
+export async function getStudyMaterials(
+  kind?: StudyMaterial["kind"]
+): Promise<StudyMaterial[]> {
+  const query = kind ? `?kind=${encodeURIComponent(kind)}` : "";
+  return apiRequest<StudyMaterial[]>(`/study/materials${query}`);
+}
+
+export async function generateStudyMaterial(
+  documentId: number,
+  kind: StudyMaterial["kind"],
+  topic?: string
+): Promise<StudyMaterial> {
+  return apiRequest<StudyMaterial>("/study/materials", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      document_id: documentId,
+      kind,
+      ...(topic?.trim() ? { topic: topic.trim() } : {}),
+    }),
+  });
+}
+
+export async function recordQuizAttempt(
+  materialId: number,
+  answers: string[]
+): Promise<{ score: number }> {
+  return apiRequest<{ score: number }>("/study/quiz-attempts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ material_id: materialId, answers }),
+  });
+}
+
+export async function getLearningAnalytics(): Promise<LearningAnalytics> {
+  return apiRequest<LearningAnalytics>("/analytics");
+}
+
+export async function getStudyPlan(): Promise<StudyPlanSession[]> {
+  return apiRequest<StudyPlanSession[]>("/planner");
+}
+
+export async function createStudySession(
+  session: Pick<
+    StudyPlanSession,
+    "title" | "subject" | "scheduled_date" | "duration_minutes"
+  >
+): Promise<StudyPlanSession> {
+  return apiRequest<StudyPlanSession>("/planner", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(session),
+  });
+}
+
+export async function updateStudySessionStatus(
+  sessionId: number,
+  status: StudyPlanSession["status"]
+): Promise<StudyPlanSession> {
+  return apiRequest<StudyPlanSession>(`/planner/${sessionId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+}
+
 export async function askDocumentQuestion(
   question: string,
   documentId?: number,

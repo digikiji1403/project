@@ -5,3 +5,10 @@ sqlalchemy
 psycopg[binary]
 python-dotenv
 langchain-groq==1.1.3
+langchain-text-splitters
+pypdf
+pinecone
+sentence-transformers
+python-multipart
+PyJWT
+pwdlib[argon2]

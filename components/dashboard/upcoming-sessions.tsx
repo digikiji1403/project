@@ -3,7 +3,6 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { Clock, ArrowRight, CalendarClock } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import {
   Card,
   CardContent,
@@ -11,22 +10,14 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { type StudySession, upcomingSessions } from '@/lib/mock-data';
-
-const typeStyles: Record<StudySession['type'], string> = {
-  Review: 'bg-primary/10 text-primary',
-  Quiz: 'bg-warning/10 text-warning',
-  Reading: 'bg-success/10 text-success',
-  Tutor: 'bg-chart-4/10 text-chart-4',
-};
+import type { StudyPlanSession } from '@/lib/api';
 
 export function UpcomingSessions({
-  sessions = upcomingSessions,
+  sessions = [],
   loading = false,
 }: {
-  sessions?: StudySession[];
+  sessions?: StudyPlanSession[];
   loading?: boolean;
 }) {
   return (
@@ -90,11 +81,7 @@ export function UpcomingSessions({
             >
               <div className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <span className="text-[10px] font-medium uppercase leading-none">
-                  {session.date === 'Today'
-                    ? 'Now'
-                    : session.date === 'Tomorrow'
-                    ? 'Tmr'
-                    : session.date.slice(0, 3)}
+                  {session.status === 'completed' ? 'Done' : 'Plan'}
                 </span>
                 <Clock className="mt-0.5 h-4 w-4" />
               </div>
@@ -103,19 +90,11 @@ export function UpcomingSessions({
                   {session.title}
                 </p>
                 <p className="truncate text-xs text-muted-foreground">
-                  {session.subject} · {session.startTime} ·{' '}
-                  {session.duration} min
+                  {session.subject} · {new Date(`${session.scheduled_date}T00:00:00`).toLocaleDateString()} ·{' '}
+                  {session.duration_minutes} min
                 </p>
               </div>
-              <Badge
-                variant="secondary"
-                className={cn(
-                  'shrink-0 text-[10px] font-semibold',
-                  typeStyles[session.type]
-                )}
-              >
-                {session.type}
-              </Badge>
+              <span className="shrink-0 text-[10px] font-semibold capitalize text-muted-foreground">{session.status}</span>
             </div>
           ))
         )}

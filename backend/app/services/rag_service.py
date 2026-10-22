@@ -1,5 +1,5 @@
 
-from app.services.ai_service import llm
+from app.services.ai_service import get_llm
 from app.services.embedding_service import embed_query
 from app.services.pinecone_service import search_document_chunks
 
@@ -77,7 +77,7 @@ def answer_document_question(
     context = "\n\n".join(context_parts)
 
     # Step 5: Ask Groq to answer using the retrieved document context.
-    response = llm.invoke(
+    response = get_llm().invoke(
         [
             (
                 "system",

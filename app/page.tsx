@@ -1,7 +1,14 @@
+
 'use client';
 
 import * as React from 'react';
-import { StatCard, StatCardSkeleton } from '@/components/dashboard/stat-card';
+
+import { AuthGuard } from '@/components/auth/auth-guard';
+import { EditLearningStats } from '@/components/dashboard/edit-learning-stats';
+import {
+  StatCard,
+  StatCardSkeleton,
+} from '@/components/dashboard/stat-card';
 import {
   ActivityChart,
   ActivityChartSkeleton,
@@ -11,47 +18,116 @@ import { UpcomingSessions } from '@/components/dashboard/upcoming-sessions';
 import { QuickActions } from '@/components/dashboard/quick-actions';
 import { WelcomeSection } from '@/components/dashboard/welcome-section';
 import { SectionHeader } from '@/components/dashboard/section-header';
-import { stats } from '@/lib/mock-data';
+
+import { getLearningStats } from '@/lib/api';
+import type { LearningStats } from '@/lib/types';
 
 export default function DashboardPage() {
   const [loading, setLoading] = React.useState(true);
 
+  const [learningStats, setLearningStats] =
+    React.useState<LearningStats | null>(null);
+
+  const [error, setError] = React.useState<string | null>(null);
+
   React.useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 650);
-    return () => clearTimeout(t);
+    async function loadLearningStats() {
+      try {
+        const data = await getLearningStats();
+        setLearningStats(data);
+        setError(null);
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Failed to load learning statistics'
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadLearningStats();
   }, []);
 
-  return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-6">
-      <WelcomeSection />
+  const statCards = learningStats
+    ? [
+        {
+          label: 'Lessons Completed',
+          value: String(learningStats.lessons_completed),
+          delta: 'Total completed lessons',
+          trend: 'neutral' as const,
+          icon: 'FileText',
+          accent: 'primary',
+        },
+        {
+          label: 'Study Hours',
+          value: String(learningStats.study_hours),
+          delta: 'Total study time',
+          trend: 'neutral' as const,
+          icon: 'Flame',
+          accent: 'success',
+        },
+        {
+          label: 'Quiz Average',
+          value: `${learningStats.quiz_average}%`,
+          delta: 'Average quiz score',
+          trend: 'neutral' as const,
+          icon: 'TrendingUp',
+          accent: 'warning',
+        },
+      ]
+    : [];
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {loading
-          ? Array.from({ length: 4 }).map((_, i) => (
+  return (
+    <AuthGuard>
+      <div className="mx-auto flex max-w-7xl flex-col gap-6">
+        <WelcomeSection />
+
+        {/* Learning statistics from FastAPI */}
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {loading ? (
+            Array.from({ length: 4 }).map((_, i) => (
               <StatCardSkeleton key={i} />
             ))
-          : stats.map((stat) => <StatCard key={stat.label} stat={stat} />)}
-      </div>
+          ) : error ? (
+            <p className="col-span-full text-sm text-red-500">
+              Unable to load learning statistics: {error}
+            </p>
+          ) : (
+            statCards.map((stat) => (
+              <StatCard key={stat.label} stat={stat} />
+            ))
+          )}
+        </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          {loading ? <ActivityChartSkeleton /> : <ActivityChart />}
-        </div>
-        <UpcomingSessions loading={loading} />
-      </div>
+        {/* Activity chart and upcoming sessions */}
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            {loading ? <ActivityChartSkeleton /> : <ActivityChart />}
+          </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <RecentDocuments loading={loading} />
+          <UpcomingSessions loading={loading} />
         </div>
-        <div className="flex flex-col gap-3">
-          <SectionHeader
-            title="Quick Actions"
-            description="Jump into your workflow"
-          />
-          <QuickActions />
+
+        {/* Recent documents and quick actions */}
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <RecentDocuments loading={loading} />
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <SectionHeader
+              title="Quick Actions"
+              description="Jump into your workflow"
+            />
+
+            <QuickActions />
+          </div>
         </div>
+
+        <EditLearningStats />
       </div>
-    </div>
+    </AuthGuard>
   );
 }
